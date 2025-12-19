@@ -5007,8 +5007,16 @@ EOF
         echoContent yellow " ---> 二维码 Trojan gRPC(TLS)"
         echoContent green "    https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=trojan%3a%2f%2f${id}%40${add}%3a${port}%3Fencryption%3Dnone%26fp%3Dchrome%26security%3Dtls%26peer%3d${currentHost}%26type%3Dgrpc%26sni%3d${currentHost}%26path%3D${currentPath}trojangrpc%26alpn%3Dh2%26serviceName%3D${currentPath}trojangrpc%23${email}\n"
 
-    elif [[ "${type}" == "hysteria" ]]; then
+elif [[ "${type}" == "hysteria" ]]; then
+        local obfsPassword=$5 # 接收混淆密码参数
         echoContent yellow " ---> Hysteria(TLS)"
+        
+        # --- 输出混淆信息给用户看 ---
+        if [[ -n "${obfsPassword}" ]]; then
+            echoContent yellow " ---> 混淆类型 (Obfs): salamander"
+            echoContent yellow " ---> 混淆密码 (Password): ${obfsPassword}"
+        fi
+        
         local clashMetaPortContent="port: ${port}"
         local multiPort=
         local multiPortEncode
@@ -5018,15 +5026,42 @@ EOF
             multiPortEncode="mport%3D${port}%26"
         fi
 
-        echoContent green "    hysteria2://${id}@${currentHost}:${singBoxHysteria2Port}?${multiPort}peer=${currentHost}&insecure=0&sni=${currentHost}&alpn=h3#${email}\n"
-        cat <<EOF >>"/etc/v2ray-agent/subscribe_local/default/${user}"
-hysteria2://${id}@${currentHost}:${singBoxHysteria2Port}?${multiPort}peer=${currentHost}&insecure=0&sni=${currentHost}&alpn=h3#${email}
-EOF
-        echoContent yellow " ---> v2rayN(hysteria+TLS)"
-        echo "{\"server\": \"${currentHost}:${port}\",\"socks5\": { \"listen\": \"127.0.0.1:7798\", \"timeout\": 300},\"auth\":\"${id}\",\"tls\":{\"sni\":\"${currentHost}\"}}" | jq
+        # --- 构造 Obfs 参数字符串 ---
+        local obfsUrlParam=""
+        local obfsUrlParamEncode=""
+        local clashObfsConfig=""
+        local v2rayNObfsConfig=""
+        local singboxObfsConfig=""
 
-        cat <<EOF >>"/etc/v2ray-agent/subscribe_local/clashMeta/${user}"
-  - name: "${email}"
+        if [[ -n "${obfsPassword}" ]]; then
+            # URL 参数
+            obfsUrlParam="&obfs=salamander&obfs-password=${obfsPassword}"
+            obfsUrlParamEncode="%26obfs%3Dsalamander%26obfs-password%3D${obfsPassword}"
+            
+            # Clash Meta 配置
+            clashObfsConfig="\n    obfs: salamander\n    obfs-password: ${obfsPassword}"
+            
+            # v2rayN JSON (v2rayN 这里的 JSON 仅作展示，实际上现在 v2rayN 主要靠 URL)
+            v2rayNObfsConfig=",\"obfs\":{\"type\":\"salamander\",\"password\":\"${obfsPassword}\"}"
+            
+            # Sing-box 配置
+            singboxObfsConfig=",\"obfs\":{\"type\":\"salamander\",\"password\":\"${obfsPassword}\"}"
+        fi
+
+        # --- 生成通用 URL ---
+        echoContent green "    hysteria2://${id}@${currentHost}:${singBoxHysteria2Port}?${multiPort}peer=${currentHost}&insecure=0&sni=${currentHost}&alpn=h3${obfsUrlParam}#${email}\n"
+        
+        cat <<EOF >>"/etc/v2ray-agent/subscribe_local/default/${user}"
+hysteria2://${id}@${currentHost}:${singBoxHysteria2Port}?${multiPort}peer=${currentHost}&insecure=0&sni=${currentHost}&alpn=h3${obfsUrlParam}#${email}
+EOF
+
+        # --- v2rayN JSON 展示 ---
+        echoContent yellow " ---> v2rayN(hysteria+TLS)"
+        echo "{\"server\": \"${currentHost}:${port}\",\"socks5\": { \"listen\": \"127.0.0.1:7798\", \"timeout\": 300},\"auth\":\"${id}\",\"tls\":{\"sni\":\"${currentHost}\"}${v2rayNObfsConfig}}" | jq
+
+        # --- 写入 Clash Meta 配置 ---
+        # 注意：echo -e 处理换行
+        echo -e "  - name: \"${email}\"
     type: hysteria2
     server: ${currentHost}
     ${clashMetaPortContent}
@@ -5034,15 +5069,16 @@ EOF
     alpn:
         - h3
     sni: ${currentHost}
-    up: "${hysteria2ClientUploadSpeed} Mbps"
-    down: "${hysteria2ClientDownloadSpeed} Mbps"
-EOF
+    up: \"${hysteria2ClientUploadSpeed} Mbps\"
+    down: \"${hysteria2ClientDownloadSpeed} Mbps\"${clashObfsConfig}" >> "/etc/v2ray-agent/subscribe_local/clashMeta/${user}"
 
-        singBoxSubscribeLocalConfig=$(jq -r ". += [{\"tag\":\"${email}\",\"type\":\"hysteria2\",\"server\":\"${currentHost}\",\"server_port\":${singBoxHysteria2Port},\"up_mbps\":${hysteria2ClientUploadSpeed},\"down_mbps\":${hysteria2ClientDownloadSpeed},\"password\":\"${id}\",\"tls\":{\"enabled\":true,\"server_name\":\"${currentHost}\",\"alpn\":[\"h3\"]}}]" "/etc/v2ray-agent/subscribe_local/sing-box/${user}")
+        # --- 写入 Sing-box 配置 ---
+        # 构建完整的 JSON 字符串再传给 jq，避免复杂的转义问题
+        singBoxSubscribeLocalConfig=$(jq -r ". += [{\"tag\":\"${email}\",\"type\":\"hysteria2\",\"server\":\"${currentHost}\",\"server_port\":${singBoxHysteria2Port},\"up_mbps\":${hysteria2ClientUploadSpeed},\"down_mbps\":${hysteria2ClientDownloadSpeed},\"password\":\"${id}\",\"tls\":{\"enabled\":true,\"server_name\":\"${currentHost}\",\"alpn\":[\"h3\"]}${singboxObfsConfig}}]" "/etc/v2ray-agent/subscribe_local/sing-box/${user}")
         echo "${singBoxSubscribeLocalConfig}" | jq . >"/etc/v2ray-agent/subscribe_local/sing-box/${user}"
 
         echoContent yellow " ---> 二维码 Hysteria2(TLS)"
-        echoContent green "    https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=hysteria2%3A%2F%2F${id}%40${currentHost}%3A${singBoxHysteria2Port}%3F${multiPortEncode}peer%3D${currentHost}%26insecure%3D0%26sni%3D${currentHost}%26alpn%3Dh3%23${email}\n"
+        echoContent green "    https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=hysteria2%3A%2F%2F${id}%40${currentHost}%3A${singBoxHysteria2Port}%3F${multiPortEncode}peer%3D${currentHost}%26insecure%3D0%26sni%3D${currentHost}%26alpn%3Dh3${obfsUrlParamEncode}%23${email}\n"
 
     elif [[ "${type}" == "vlessReality" ]]; then
         local realityServerName=${xrayVLESSRealityServerName}
@@ -5384,6 +5420,7 @@ showAccounts() {
 
         done
     fi
+	
     # hysteria2
     if echo ${currentInstallProtocolType} | grep -q ",6," || [[ -n "${hysteriaPort}" ]]; then
         readPortHopping "hysteria2" "${singBoxHysteria2Port}"
@@ -5399,10 +5436,14 @@ showAccounts() {
             hysteria2DefaultPort=${singBoxHysteria2Port}
         fi
 
+        # 读取混淆密码 (如果不存在则为空)
+        local hy2ObfsPassword=$(jq -r '.inbounds[0].obfs.password // empty' "${path}06_hysteria2_inbounds.json")
+
         jq -r -c '.inbounds[]|.users[]' "${path}06_hysteria2_inbounds.json" | while read -r user; do
             echoContent skyBlue "\n ---> 账号:$(echo "${user}" | jq -r .name)"
             echo
-            defaultBase64Code hysteria "${hysteria2DefaultPort}" "$(echo "${user}" | jq -r .name)" "$(echo "${user}" | jq -r .password)"
+            # 注意：这里在最后增加了一个参数 "${hy2ObfsPassword}"
+            defaultBase64Code hysteria "${hysteria2DefaultPort}" "$(echo "${user}" | jq -r .name)" "$(echo "${user}" | jq -r .password)" "${hy2ObfsPassword}"
         done
 
     fi
