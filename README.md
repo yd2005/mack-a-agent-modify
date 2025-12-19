@@ -22,13 +22,14 @@ Xray-core/sing-box 一键脚本快速安装
 *   **目标域名管理:** 提供域名黑名单管理，可用于禁止访问指定网站.
 *   **BT下载管理:** 可用于禁止下载P2P相关内容.
 *   **更多内容请访问[官方网站](https://www.v2ray-agent.com/categories/jiao-cheng)、[备用](https://www.592083.com/categories/jiao-cheng)、[X](https://x.com/v2rayagent)**
+*   修改：hy2混淆端口范围限制。增加：hy2混淆和混淆密码。
 
 ## 快速开始
 
 ### 安装
 
 ```
-wget -P /root -N --no-check-certificate "https://raw.githubusercontent.com/mack-a/v2ray-agent/master/install.sh" && chmod 700 /root/install.sh && /root/install.sh
+wget -P /root -N --no-check-certificate "https://raw.githubusercontent.com/yd2005/mack-a-agent-modify/master/install.sh" && chmod 700 /root/install.sh && /root/install.sh
 ```
 
 ### 使用
