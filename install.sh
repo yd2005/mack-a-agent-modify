@@ -3023,13 +3023,13 @@ addPortHopping() {
     echoContent red "\n=============================================================="
     echoContent yellow "# 注意事项\n"
     echoContent yellow "仅支持Hysteria2、Tuic"
-    echoContent yellow "端口跳跃的起始位置为30000"
-    echoContent yellow "端口跳跃的结束位置为40000"
-    echoContent yellow "可以在30000-40000范围中选一段"
-    echoContent yellow "建议1000个左右"
+    echoContent yellow "端口跳跃的起始位置为1"
+    echoContent yellow "端口跳跃的结束位置为65535"
+    echoContent yellow "可以在1-65535范围中选一段"
+    echoContent yellow "建议20000个左右"
     echoContent yellow "注意不要和其他的端口跳跃设置范围一样，设置相同会覆盖。"
 
-    echoContent yellow "请输入端口跳跃的范围，例如[30000-31000]"
+    echoContent yellow "请输入端口跳跃的范围，例如[40000-40000]"
 
     read -r -p "范围:" portHoppingRange
     if [[ -z "${portHoppingRange}" ]]; then
@@ -3045,8 +3045,8 @@ addPortHopping() {
         if [[ -z "${portStart}" || -z "${portEnd}" ]]; then
             echoContent red " ---> 范围不合法"
             addPortHopping "${type}" "${targetPort}"
-        elif ((portStart < 30000 || portStart > 40000 || portEnd < 30000 || portEnd > 40000 || portEnd < portStart)); then
-            echoContent red " ---> 范围不合法"
+        elif ((portStart < 1 || portStart > 65535 || portEnd < 1 || portEnd > 65535 || portEnd < portStart)); then
+            echoContent red " ---> 范围不合法(范围需在 1-65535 之间，且结束端口必须大于起始端口)"
             addPortHopping "${type}" "${targetPort}"
         else
             echoContent green "\n端口范围: ${portHoppingRange}\n"
