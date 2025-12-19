@@ -4561,13 +4561,35 @@ EOF
         rm /etc/v2ray-agent/sing-box/conf/config/08_VLESS_vision_gRPC_inbounds.json >/dev/null 2>&1
     fi
 
-    if echo "${selectCustomInstallType}" | grep -q ",6," || [[ "$1" == "all" ]]; then
+if echo "${selectCustomInstallType}" | grep -q ",6," || [[ "$1" == "all" ]]; then
         echoContent yellow "\n================== 配置 Hysteria2 ==================\n"
         echoContent skyBlue "\n开始配置Hysteria2协议端口"
         echo
         mapfile -t result < <(initSingBoxPort "${singBoxHysteria2Port}")
         echoContent green "\n ---> Hysteria2端口：${result[-1]}"
         initHysteria2Network
+
+        # --- 新增：Hysteria 2 混淆配置逻辑 ---
+        local hy2ObfsContent=""
+        echoContent yellow "\n是否开启 Hysteria2 端口混淆 (Obfuscation)? [y/n]"
+        read -r -p "请选择 [回车默认不开启]:" enableHy2Obfs
+
+        if [[ "${enableHy2Obfs}" == "y" ]]; then
+            # 生成随机密码
+            local randomObfsPassword=$(date +%s%N | md5sum | head -c 16)
+            echoContent yellow "\n已生成默认随机混淆密码: ${randomObfsPassword}"
+            read -r -p "请输入自定义混淆密码 [回车使用默认随机密码]:" customObfsPassword
+            
+            if [[ -n "${customObfsPassword}" ]]; then
+                randomObfsPassword=${customObfsPassword}
+            fi
+            
+            echoContent green " ---> 使用的混淆密码: ${randomObfsPassword}"
+            # 构造 JSON 字符串 (注意末尾逗号)
+            hy2ObfsContent="\"obfs\": {\"type\": \"salamander\", \"password\": \"${randomObfsPassword}\"},"
+        fi
+        # ----------------------------------------
+
         cat <<EOF >/etc/v2ray-agent/sing-box/conf/config/06_hysteria2_inbounds.json
 {
     "inbounds": [
@@ -4575,6 +4597,7 @@ EOF
             "type": "hysteria2",
             "listen": "::",
             "listen_port": ${result[-1]},
+            ${hy2ObfsContent}
             "users": $(initSingBoxClients 6),
             "up_mbps":${hysteria2ClientDownloadSpeed},
             "down_mbps":${hysteria2ClientUploadSpeed},
