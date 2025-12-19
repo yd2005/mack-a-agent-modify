@@ -1,0 +1,127 @@
+2. 修改 addPortHopping
+变更点： 移除了 30000-40000 的硬性限制，允许 1-65535 范围（只要结束端口大于起始端口）。
+
+Bash
+
+# 端口跳跃
+addPortHopping() {
+    local type=$1
+    local targetPort=$2
+    if [[ -n "${portHoppingStart}" || -n "${portHoppingEnd}" ]]; then
+        echoContent red " ---> 已添加不可重复添加，可删除后重新添加"
+        exit 0
+    fi
+    if [[ "${release}" == "centos" ]]; then
+        if ! systemctl status firewalld 2>/dev/null | grep -q "active (running)"; then
+            echoContent red " ---> 未启动firewalld防火墙，无法设置端口跳跃。"
+            exit 0
+        fi
+    fi
+
+    echoContent skyBlue "\n进度 1/1 : 端口跳跃"
+    echoContent red "\n=============================================================="
+    echoContent yellow "# 注意事项\n"
+    echoContent yellow "仅支持Hysteria2、Tuic"
+    echoContent yellow "请输入端口跳跃的范围，例如[30000-40000]"
+    echoContent yellow "注意不要和其他的端口跳跃设置范围一样，设置相同会覆盖。"
+
+    read -r -p "范围:" portHoppingRange
+    if [[ -z "${portHoppingRange}" ]]; then
+        echoContent red " ---> 范围不可为空"
+        addPortHopping "${type}" "${targetPort}"
+    elif echo "${portHoppingRange}" | grep -q "-"; then
+
+        local portStart=
+        local portEnd=
+        portStart=$(echo "${portHoppingRange}" | awk -F '-' '{print $1}')
+        portEnd=$(echo "${portHoppingRange}" | awk -F '-' '{print $2}')
+
+        if [[ -z "${portStart}" || -z "${portEnd}" ]]; then
+            echoContent red " ---> 范围不合法"
+            addPortHopping "${type}" "${targetPort}"
+        # 修改了此处的判断逻辑，放宽限制为 1-65535
+        elif ((portStart < 1 || portStart > 65535 || portEnd < 1 || portEnd > 65535 || portEnd < portStart)); then
+            echoContent red " ---> 范围不合法 (范围需在 1-65535 之间，且结束端口必须大于起始端口)"
+            addPortHopping "${type}" "${targetPort}"
+        else
+            echoContent green "\n端口范围: ${portHoppingRange}\n"
+            if [[ "${release}" == "centos" ]]; then
+                sudo firewall-cmd --permanent --add-masquerade
+                sudo firewall-cmd --reload
+                addFirewalldPortHopping "${portStart}" "${portEnd}" "${targetPort}"
+                if ! sudo firewall-cmd --list-forward-ports | grep -q "toport=${targetPort}"; then
+                    echoContent red " ---> 端口跳跃添加失败"
+                    exit 0
+                fi
+            else
+                iptables -t nat -A PREROUTING -p udp --dport "${portStart}:${portEnd}" -m comment --comment "mack-a_${type}_portHopping" -j DNAT --to-destination ":${targetPort}"
+                sudo netfilter-persistent save
+                if ! iptables-save | grep -q "mack-a_${type}_portHopping"; then
+                    echoContent red " ---> 端口跳跃添加失败"
+                    exit 0
+                fi
+            fi
+            allowPort "${portStart}:${portEnd}" udp
+            echoContent green " ---> 端口跳跃添加成功"
+        fi
+    fi
+}
+3. 修改 initSingBoxHysteria2Config
+变更点： 增加了询问是否开启 Obfs 混淆的逻辑。如果开启，生成随机密码并询问用户是否使用自定义密码，最后将配置写入 JSON。
+
+Bash
+
+# 初始化 sing-box Hysteria2 配置
+initSingBoxHysteria2Config() {
+    echoContent skyBlue "\n进度 $1/${totalProgress} : 初始化Hysteria2配置"
+
+    initHysteriaPort
+    initHysteria2Network
+
+    # --------------- 新增混淆配置逻辑 开始 ---------------
+    local hy2ObfsContent=""
+    echoContent yellow "\n是否开启 Hysteria2 端口混淆 (Obfuscation)? [y/n]"
+    read -r -p "请选择 [回车默认不开启]:" enableHy2Obfs
+
+    if [[ "${enableHy2Obfs}" == "y" ]]; then
+        # 生成随机密码 (使用 date 和 md5 生成一个随机字符串)
+        local randomObfsPassword=$(date +%s%N | md5sum | head -c 16)
+        
+        echoContent yellow "\n已生成默认随机混淆密码: ${randomObfsPassword}"
+        read -r -p "请输入自定义混淆密码 [回车使用默认随机密码]:" customObfsPassword
+        
+        if [[ -n "${customObfsPassword}" ]]; then
+            randomObfsPassword=${customObfsPassword}
+        fi
+        
+        echoContent green " ---> 使用的混淆密码: ${randomObfsPassword}"
+        # 构造 JSON 字符串，注意末尾的逗号
+        hy2ObfsContent="\"obfs\": {\"type\": \"salamander\", \"password\": \"${randomObfsPassword}\"},"
+    fi
+    # --------------- 新增混淆配置逻辑 结束 ---------------
+
+    cat <<EOF >/etc/v2ray-agent/sing-box/conf/config/hysteria2.json
+{
+    "inbounds": [
+        {
+            "type": "hysteria2",
+            "listen": "::",
+            "listen_port": ${hysteriaPort},
+            "users": $(initXrayClients 6),
+            "up_mbps":${hysteria2ClientDownloadSpeed},
+            "down_mbps":${hysteria2ClientUploadSpeed},
+            ${hy2ObfsContent}
+            "tls": {
+                "enabled": true,
+                "server_name":"${currentHost}",
+                "alpn": [
+                    "h3"
+                ],
+                "certificate_path": "/etc/v2ray-agent/tls/${currentHost}.crt",
+                "key_path": "/etc/v2ray-agent/tls/${currentHost}.key"
+            }
+        }
+    ]
+}
+EOF
+}
