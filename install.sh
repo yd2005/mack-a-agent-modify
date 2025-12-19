@@ -3029,7 +3029,7 @@ addPortHopping() {
     echoContent yellow "建议20000个左右"
     echoContent yellow "注意不要和其他的端口跳跃设置范围一样，设置相同会覆盖。"
 
-    echoContent yellow "请输入端口跳跃的范围，例如[40000-40000]"
+    echoContent yellow "请输入端口跳跃的范围，例如[40000-60000]"
 
     read -r -p "范围:" portHoppingRange
     if [[ -z "${portHoppingRange}" ]]; then
